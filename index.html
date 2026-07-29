@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lily's Playroom</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(160deg, #1a0a2e 0%, #3b1f6e 45%, #5c2d91 100%);
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            color: #e8d5ff;
+            overflow-x: hidden;
+            padding: 24px;
+            position: relative;
+        }
+
+        .bg-spiral {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background: url('spiral.gif') center center / cover no-repeat;
+            opacity: 0.12;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 25% 30%, rgba(180, 100, 255, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 75% 70%, rgba(255, 100, 180, 0.1) 0%, transparent 50%);
+        }
+
+        .wrap {
+            position: relative;
+            z-index: 1;
+            width: min(920px, 100%);
+            text-align: center;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 6vw, 3.2rem);
+            font-weight: 800;
+            color: #ff9cf0;
+            text-shadow:
+                0 0 24px rgba(255, 156, 240, 0.8),
+                0 0 48px rgba(180, 80, 255, 0.5),
+                0 4px 0 #3b0a50;
+            letter-spacing: 3px;
+            margin-bottom: 0.4rem;
+        }
+
+        .tagline {
+            color: #c9a0e8;
+            font-size: 1.05rem;
+            margin-bottom: 2.2rem;
+            font-style: italic;
+            text-shadow: 0 0 12px rgba(200, 120, 255, 0.4);
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+        }
+
+        .card {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            background: rgba(30, 15, 55, 0.85);
+            border: 2px solid #9b6bff;
+            border-radius: 18px;
+            padding: 1.6rem 1.4rem 1.4rem;
+            box-shadow: 0 0 30px rgba(140, 80, 255, 0.35);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 50% 0%, rgba(255, 150, 220, 0.12), transparent 60%);
+            pointer-events: none;
+        }
+
+        .card:hover {
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: 0 0 45px rgba(255, 120, 200, 0.5);
+            border-color: #ff9cf0;
+        }
+
+        .card-icon {
+            font-size: 2.6rem;
+            margin-bottom: 0.6rem;
+            filter: drop-shadow(0 0 10px rgba(255, 156, 240, 0.6));
+        }
+
+        .card h2 {
+            font-size: 1.35rem;
+            color: #e0b0ff;
+            margin-bottom: 0.5rem;
+            letter-spacing: 1px;
+            text-shadow: 0 0 12px rgba(200, 120, 255, 0.5);
+        }
+
+        .card p {
+            font-size: 0.92rem;
+            color: #b08fd0;
+            line-height: 1.45;
+            margin-bottom: 1rem;
+        }
+
+        .card .btn {
+            display: inline-block;
+            padding: 0.55rem 1.2rem;
+            background: #5c2d91;
+            border: 2px solid #9b6bff;
+            border-radius: 10px;
+            color: #ffe6ff;
+            font-weight: 600;
+            font-size: 0.9rem;
+            box-shadow: 0 0 14px rgba(140, 80, 255, 0.35);
+        }
+
+        .card:hover .btn {
+            background: #7a3fb8;
+            border-color: #ff9cf0;
+        }
+
+        .card.clicker h2 { color: #ffb0e8; }
+        .card.chess h2 { color: #c5b0ff; }
+
+        .footer {
+            margin-top: 2.2rem;
+            font-size: 0.8rem;
+            color: #8a6aa8;
+            position: relative;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-spiral"></div>
+
+    <div class="wrap">
+        <h1>LILY'S PLAYROOM</h1>
+        <p class="tagline">Pick your game, puppy~</p>
+
+        <div class="cards">
+            <a class="card clicker" href="WebsiteClicker/index.html">
+                <div class="card-icon">✦</div>
+                <h2>CLICK CLICK CLICK~</h2>
+                <p>The original clicker. Tap, collect rewards, and see what happens every 25 clicks.</p>
+                <span class="btn">Play Clicker</span>
+            </a>
+
+            <a class="card chess" href="WebsiteChess/index.html">
+                <div class="card-icon">♚</div>
+                <h2>CHESS WITH LILY AI</h2>
+                <p>Play against Lily. She plays to win — and she loves taking your pieces.</p>
+                <span class="btn">Play Chess</span>
+            </a>
+        </div>
+
+        <p class="footer">Put spiral.gif next to this file for the background animation.</p>
+    </div>
+</body>
+</html>
