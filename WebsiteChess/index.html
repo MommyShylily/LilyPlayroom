@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHESS WITH LILY AI</title>
+    <link rel="stylesheet"
+          href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(160deg, #1a0a2e 0%, #3b1f6e 50%, #5c2d91 100%);
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #e8d5ff;
+            user-select: none;
+            padding: 16px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Spirale: füllt den Mittelbereich zwischen den Side-Pics, ohne sie zu überdecken */
+        .bg-spiral {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: min(22vw, 280px);
+            right: min(22vw, 280px);
+            z-index: 0;
+            pointer-events: none;
+            background: url('spiral.gif') center center / cover no-repeat;
+            opacity: 0.1;
+            /* kein CSS-Spin – nur das GIF selbst */
+        }
+
+        @media (max-width: 900px) {
+            .bg-spiral {
+                left: 0;
+                right: 0;
+            }
+        }
+
+
+        /* Side character panels */
+        .side-char {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            width: min(22vw, 280px);
+            z-index: 0;
+            pointer-events: none;
+            background: url('photo8.webp') center center / cover no-repeat;
+            opacity: 0.28;
+        }
+        .side-char.left {
+            left: 0;
+            transform: scaleX(-1); /* mirror → looks toward center */
+        }
+        .side-char.right {
+            right: 0;
+        }
+        @media (max-width: 900px) {
+            .side-char { display: none; }
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 30% 40%, rgba(180, 100, 255, 0.08) 0%, transparent 45%),
+                radial-gradient(circle at 70% 60%, rgba(140, 80, 220, 0.07) 0%, transparent 50%);
+        }
+
+        h1, .board-wrap, .status-bar, .controls {
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            font-size: 1.9rem;
+            margin-bottom: 1rem;
+            color: #e0b0ff;
+            text-shadow: 0 0 18px rgba(200, 120, 255, 0.7);
+            letter-spacing: 2px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .board-wrap {
+            width: min(640px, 96vw);
+            padding: 14px;
+            background: rgba(30, 15, 55, 0.8);
+            border: 2px solid #9b6bff;
+            border-radius: 14px;
+            box-shadow: 0 0 40px rgba(140, 80, 255, 0.5);
+        }
+
+        #myBoard { width: 100%; }
+
+        .board-wrap img {
+            display: block !important;
+            max-width: 100%;
+            height: auto;
+            pointer-events: none;
+        }
+
+        /* Click-to-move highlights */
+        .square-55d63 {
+            cursor: pointer;
+        }
+        .highlight-selected {
+            box-shadow: inset 0 0 0 4px rgba(200, 140, 255, 0.95) !important;
+            background: rgba(160, 100, 255, 0.45) !important;
+        }
+        .highlight-move {
+            box-shadow: inset 0 0 0 3px rgba(180, 255, 160, 0.85) !important;
+            background: radial-gradient(circle at center, rgba(120, 255, 140, 0.55) 0%, rgba(120, 255, 140, 0.15) 45%, transparent 70%) !important;
+        }
+        .highlight-capture {
+            box-shadow: inset 0 0 0 3px rgba(255, 180, 80, 0.95) !important;
+            background: rgba(255, 140, 60, 0.4) !important;
+        }
+        .highlight-check {
+            background: rgba(220, 30, 50, 0.75) !important;
+            box-shadow: inset 0 0 18px rgba(255, 40, 60, 0.85), 0 0 12px rgba(255, 0, 40, 0.5) !important;
+        }
+
+        /* Trap hints – AI bait squares (blinking) */
+        .highlight-trap {
+            box-shadow: inset 0 0 0 3px rgba(255, 120, 220, 0.9), 0 0 14px rgba(255, 100, 200, 0.55) !important;
+            background: radial-gradient(circle at center, rgba(255, 140, 220, 0.45) 0%, rgba(180, 80, 200, 0.2) 50%, transparent 75%) !important;
+            position: relative;
+            animation: trap-blink 1.1s ease-in-out infinite;
+        }
+        @keyframes trap-blink {
+            0%, 100% { opacity: 1; filter: brightness(1); }
+            50% { opacity: 0.45; filter: brightness(1.35); }
+        }
+        .trap-label {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.62rem;
+            font-weight: 700;
+            color: #ffe6ff;
+            text-shadow: 0 0 6px #ff66cc, 0 1px 2px #000;
+            pointer-events: none;
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+            z-index: 5;
+            line-height: 1.1;
+            text-align: center;
+        }
+
+        #countdown-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 130;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(20, 0, 40, 0.75);
+            pointer-events: none;
+            flex-direction: column;
+        }
+        #countdown-overlay.show { display: flex; }
+        #countdown-overlay .cd-num {
+            font-size: clamp(4rem, 20vw, 10rem);
+            font-weight: 900;
+            color: #ff6bb5;
+            text-shadow: 0 0 40px rgba(255, 100, 180, 0.95), 0 0 80px rgba(180, 50, 255, 0.7);
+        }
+        #countdown-overlay .pressure-msg {
+            font-size: clamp(1.3rem, 5vw, 2.4rem);
+            font-weight: 600;
+            color: #ffb0e8;
+            text-shadow: 0 0 18px rgba(255, 120, 200, 0.85), 0 0 30px rgba(180, 80, 255, 0.5);
+            text-align: center;
+            max-width: 90vw;
+            min-height: 1.4em;
+            letter-spacing: 0.5px;
+            font-style: italic;
+        }
+        #countdown-overlay .pressure-msg .cursor {
+            display: inline-block;
+            width: 0.12em;
+            height: 1em;
+            background: #ffb0e8;
+            margin-left: 2px;
+            vertical-align: text-bottom;
+            animation: blink-cursor 0.7s step-end infinite;
+        }
+        @keyframes blink-cursor {
+            50% { opacity: 0; }
+        }
+
+        .status-bar {
+            margin-top: 1rem;
+            font-size: 1.15rem;
+            color: #d4a5ff;
+            text-align: center;
+            min-height: 1.5em;
+        }
+
+        .status-bar strong { color: #ff9cf0; }
+
+        .controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .controls button {
+            padding: 10px 18px;
+            background: #5c2d91;
+            border: 2px solid #9b6bff;
+            color: #e8d5ff;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            box-shadow: 0 0 12px rgba(140, 80, 255, 0.35);
+        }
+
+        .controls button:hover { background: #7a3fb8; }
+
+        /* Single capture: GOOD PUPPY */
+        #puppy-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            background: rgba(20, 5, 40, 0.55);
+        }
+        #puppy-overlay.show { opacity: 1; }
+        #puppy-overlay .puppy-text {
+            font-size: clamp(2.5rem, 10vw, 5rem);
+            font-weight: 800;
+            color: #ff9cf0;
+            text-shadow: 0 0 20px rgba(255,156,240,0.9), 0 0 40px rgba(200,100,255,0.7), 0 4px 0 #5c2d91;
+            letter-spacing: 4px;
+            margin-bottom: 1rem;
+            animation: pulse 0.6s ease;
+        }
+        #puppy-overlay img {
+            max-width: min(340px, 70vw);
+            max-height: 45vh;
+            border-radius: 12px;
+            border: 3px solid #9b6bff;
+            box-shadow: 0 0 40px rgba(180,100,255,0.6);
+            object-fit: cover;
+        }
+
+        /* Full gallery flash (5 captures / game over) */
+        #gallery-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 110;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 0, 25, 0.92);
+            flex-direction: column;
+        }
+        #gallery-overlay.active { display: flex; }
+        #gallery-overlay img {
+            max-width: min(90vw, 520px);
+            max-height: 70vh;
+            border-radius: 14px;
+            border: 3px solid #9b6bff;
+            box-shadow: 0 0 50px rgba(180,100,255,0.7);
+            object-fit: contain;
+            transition: opacity 0.2s;
+        }
+
+        /* YOU LOST */
+        #lost-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 120;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 0, 30, 0.92);
+        }
+        #lost-overlay.show { display: flex; }
+        #lost-overlay .lost-text {
+            font-size: clamp(3rem, 14vw, 7rem);
+            font-weight: 900;
+            color: #ff6bb5;
+            text-shadow:
+                0 0 30px rgba(255, 100, 180, 0.95),
+                0 0 60px rgba(180, 50, 255, 0.8),
+                0 6px 0 #3b0a50;
+            letter-spacing: 6px;
+            animation: pulse 0.8s ease;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.7); opacity: 0; }
+            60% { transform: scale(1.08); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    
+        .back-home {
+            position: fixed;
+            top: 14px;
+            left: 14px;
+            z-index: 200;
+            padding: 8px 14px;
+            background: rgba(40, 15, 70, 0.9);
+            border: 2px solid #9b6bff;
+            border-radius: 10px;
+            color: #e8d5ff;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            box-shadow: 0 0 16px rgba(140, 80, 255, 0.45);
+            transition: background 0.15s, border-color 0.15s, transform 0.15s;
+        }
+        .back-home:hover {
+            background: #5c2d91;
+            border-color: #ff9cf0;
+            color: #ffe6ff;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <a class="back-home" href="../index.html">← Home</a>
+
+    <div class="bg-spiral"></div>
+    <div class="side-char left"></div>
+    <div class="side-char right"></div>
+
+    <h1>CHESS WITH LILY AI</h1>
+
+    <div class="board-wrap">
+        <div id="myBoard"></div>
+    </div>
+
+    <div class="status-bar" id="status">White to move</div>
+
+    <div class="controls">
+        <button id="btn-new">New Game</button>
+        <button id="btn-undo">Undo</button>
+    </div>
+
+    <div id="countdown-overlay">
+        <div class="pressure-msg" id="pressure-msg"></div>
+        <div class="cd-num" id="cd-num" style="display:none;">10</div>
+    </div>
+
+    <div id="puppy-overlay">
+        <div class="puppy-text">GOOD PUPPY</div>
+        <img id="puppy-img" alt="" src="">
+    </div>
+
+    <div id="gallery-overlay">
+        <img id="gallery-img" alt="" src="">
+    </div>
+
+    <div id="lost-overlay">
+        <div class="lost-text">YOU LOST</div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <script>
+        const game = new Chess();
+        let board = null;
+        let engine = null;
+        let engineReady = false;
+        let thinking = false;
+        let paused = false;          // match paused during gallery
+        let playerCaptures = 0;      // pieces taken FROM the player
+        let milestonesHit = 0;       // how many times we hit a 5-capture milestone
+        let trapsUsedThisGame = 0;   // max 5 trap hints per game
+        const MAX_TRAPS = 5;
+
+        // Pressure / timeout
+        let pressureStep = 0;
+        let pressureTimer = null;
+        let countdownTimer = null;
+        let countdownActive = false;
+        let typingTimer = null;
+        let trapRewardLock = false;
+        let pressureGen = 0; // invalidates stale timers
+        const FIRST_PRESSURE_MS = 20000;  // first message after 20s inactivity
+        const BETWEEN_PRESSURE_MS = 10000; // 10s after typing finishes
+        const PRESSURE_LINES = [
+            'Did you fell asleep~?',
+            'Giving up already~?',
+            'Make your move come on~'
+        ];
+        const INTRO_LINES = [
+            'Welcome dear puppy~',
+            'Are you here to loose for the first time~?',
+            'Or are you here again because you love loosing to Lily~?',
+            'Well lets find out shall we~?'
+        ];
+        let introActive = false;
+        let gameStarted = false;
+
+        // Images
+        const imageCandidates = [];
+        for (let i = 1; i <= 25; i++) {
+            imageCandidates.push(`photo${i}.jpg`, `photo${i}.jpeg`, `photo${i}.png`, `photo${i}.webp`);
+        }
+        imageCandidates.push('photo.jpg', 'photo.jpeg', 'photo.webp', 'photo8.webp', 'dZFG60J.jpg', 'dZFG60J.jpeg', 'dZFG60J');
+        const availableImages = [];
+        let imgProbe = 0;
+        let imgIndex = 0;
+
+        function probeImages() {
+            if (imgProbe >= imageCandidates.length) return;
+            const name = imageCandidates[imgProbe++];
+            const t = new Image();
+            t.onload = () => { availableImages.push(name); probeImages(); };
+            t.onerror = () => probeImages();
+            t.src = name;
+        }
+        probeImages();
+
+        function playClicker() {
+            try {
+                const a = new Audio('clicker.mp3');
+                a.volume = 1.0; // full volume
+                a.play().catch(() => {});
+            } catch (e) {}
+        }
+
+        let moanAudio = null;
+        let audioUnlocked = false;
+
+        function unlockAudio() {
+            if (audioUnlocked) return;
+            audioUnlocked = true;
+            // Prime audio elements so later play() works
+            ['clicker.mp3', 'keyboard.mp3', 'moan.mp3'].forEach((src) => {
+                try {
+                    const a = new Audio(src);
+                    a.volume = 0.001;
+                    a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+                } catch (e) {}
+            });
+            try {
+                moanAudio = new Audio('moan.mp3');
+                moanAudio.preload = 'auto';
+                moanAudio.volume = 1.0;
+                moanAudio.load();
+            } catch (e) {}
+        }
+
+        function playMoan() {
+            return new Promise((resolve) => {
+                unlockAudio();
+                try {
+                    if (!moanAudio) {
+                        moanAudio = new Audio('moan.mp3');
+                        moanAudio.preload = 'auto';
+                        moanAudio.volume = 1.0;
+                    }
+                    const a = moanAudio;
+                    a.pause();
+                    a.currentTime = 0;
+                    a.volume = 1.0;
+                    let settled = false;
+                    const done = () => {
+                        if (settled) return;
+                        settled = true;
+                        a.removeEventListener('ended', done);
+                        a.removeEventListener('error', done);
+                        resolve();
+                    };
+                    a.addEventListener('ended', done);
+                    a.addEventListener('error', done);
+                    const p = a.play();
+                    if (p && p.then) {
+                        p.then(() => {
+                            console.log('[chess] moan playing, duration=', a.duration);
+                        }).catch((err) => {
+                            console.warn('[chess] moan play failed', err);
+                            // retry once with a fresh element
+                            try {
+                                const b = new Audio('moan.mp3');
+                                b.volume = 1.0;
+                                moanAudio = b;
+                                b.addEventListener('ended', done, { once: true });
+                                b.addEventListener('error', done, { once: true });
+                                b.play().catch(() => setTimeout(done, 8000));
+                            } catch (e2) {
+                                setTimeout(done, 8000);
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.warn('[chess] moan exception', e);
+                    setTimeout(resolve, 8000);
+                }
+            });
+        }
+
+        // Capture feedback (with optional picture)
+        function showGoodPuppy(withPicture) {
+            const overlay = document.getElementById('puppy-overlay');
+            const imgEl = document.getElementById('puppy-img');
+            if (withPicture && availableImages.length > 0) {
+                imgIndex = (imgIndex + 1) % availableImages.length;
+                imgEl.src = availableImages[imgIndex];
+                imgEl.style.display = 'block';
+            } else {
+                imgEl.style.display = 'none';
+            }
+            overlay.classList.add('show');
+            playClicker();
+            setTimeout(() => overlay.classList.remove('show'), 1400);
+        }
+
+        // Trap accept: one clicker + one GOOD PUPPY (no picture)
+        function showTrapReward() {
+            if (trapRewardLock) return;
+            trapRewardLock = true;
+            showGoodPuppy(false);
+            setTimeout(() => { trapRewardLock = false; }, 1600);
+        }
+
+        // Shared: each clicker tick switches the picture (synced flash)
+        function runSyncedFlash(options) {
+            // options: { durationMs, onDone }
+            const overlay = document.getElementById('gallery-overlay');
+            const imgEl = document.getElementById('gallery-img');
+            const pics = availableImages.length > 0 ? availableImages.slice(0, 25) : [];
+            let i = 0;
+            let running = true;
+            const tickMs = 420;
+            const durationMs = options.durationMs || 10000;
+
+            if (!overlay || !imgEl) {
+                if (options.onDone) options.onDone();
+                return;
+            }
+
+            overlay.classList.add('active');
+
+            // show first pic immediately
+            if (pics.length) {
+                imgEl.src = pics[0];
+                i = 1;
+            }
+            playClicker();
+
+            const intervalId = setInterval(() => {
+                if (!running) return;
+                playClicker();
+                if (pics.length) {
+                    imgEl.src = pics[i % pics.length];
+                    i++;
+                }
+            }, tickMs);
+
+            setTimeout(() => {
+                running = false;
+                clearInterval(intervalId);
+                overlay.classList.remove('active');
+                if (options.onDone) options.onDone();
+            }, durationMs);
+        }
+
+        // Every 5 captures / checkmate: pics flash while moan.mp3 plays; ends when moan ends
+        function runGalleryEvent(thenShowLost) {
+            paused = true;
+            thinking = true;
+            stopPressure();
+            unlockAudio();
+
+            const overlay = document.getElementById('gallery-overlay');
+            const imgEl = document.getElementById('gallery-img');
+            const pics = availableImages.length > 0 ? availableImages.slice(0, 25) : [];
+            let i = 0;
+            let running = true;
+            const tickMs = 420;
+
+            if (overlay) overlay.classList.add('active');
+            if (pics.length && imgEl) {
+                imgEl.src = pics[0];
+                i = 1;
+            }
+
+            const intervalId = setInterval(() => {
+                if (!running) return;
+                if (pics.length && imgEl) {
+                    imgEl.src = pics[i % pics.length];
+                    i++;
+                }
+            }, tickMs);
+
+            function finish() {
+                if (!running) return;
+                running = false;
+                clearInterval(intervalId);
+                try {
+                    if (moanAudio) { moanAudio.pause(); moanAudio.currentTime = 0; }
+                } catch (e) {}
+                if (overlay) overlay.classList.remove('active');
+                paused = false;
+                thinking = false;
+                if (thenShowLost) {
+                    showYouLost();
+                } else {
+                    updateStatus();
+                    if (!game.game_over() && game.turn() === 'w') {
+                        computeTrapHints();
+                        startPressureWatch();
+                    }
+                }
+            }
+
+            // Wait until moan fully ends, then stop pics
+            playMoan().then(finish);
+        }
+
+        function showYouLost() {
+            const el = document.getElementById('lost-overlay');
+            el.classList.add('show');
+        }
+
+        function hideYouLost() {
+            document.getElementById('lost-overlay').classList.remove('show');
+        }
+
+        function updateStatus() {
+            const el = document.getElementById('status');
+            if (paused) {
+                el.textContent = '';
+                return;
+            }
+            if (game.in_checkmate()) {
+                el.innerHTML = game.turn() === 'w'
+                    ? 'Checkmate — <strong>You lose.</strong>'
+                    : 'Checkmate — White wins';
+            } else if (game.in_draw()) {
+                el.textContent = 'Draw';
+            } else if (game.in_check()) {
+                el.textContent = (game.turn() === 'w' ? 'White' : 'Black') + ' in check';
+            } else {
+                el.textContent = game.turn() === 'w' ? 'Your turn (White)' : 'Thinking…';
+            }
+        }
+
+        const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+        // Prefer captures that win material safely; avoid hanging own pieces
+        function pickGreedyAmong(moves, fenBefore) {
+            let best = moves[0];
+            let bestScore = -99999;
+            for (const uci of moves) {
+                const from = uci.slice(0, 2);
+                const to = uci.slice(2, 4);
+                const promo = uci.length > 4 ? uci[4] : 'q';
+                const g = new Chess(fenBefore);
+                const m = g.move({ from, to, promotion: promo });
+                if (!m) continue;
+
+                let score = 0;
+                // Strong bonus for capturing (goal: strip player to lone king)
+                if (m.captured) score += VAL[m.captured] * 120;
+
+                // Penalty if our moved piece can be safely recaptured (unnecessary risk)
+                const ourPiece = g.get(to);
+                const ourVal = ourPiece ? (VAL[ourPiece.type] || 0) : 0;
+                const replies = g.moves({ verbose: true });
+                const recaptures = replies.filter(r => r.to === to && r.captured);
+                if (recaptures.length) {
+                    // opponent can take back — only good if we gained material
+                    const gain = (m.captured ? VAL[m.captured] : 0) - ourVal;
+                    if (gain < 0) score -= 200; // bad trade / hanging
+                    else if (gain === 0) score -= 30; // equal trade: mild dislike (keep AI pieces)
+                }
+
+                // Prefer checks that don't lose material
+                if (g.in_check()) score += 8;
+
+                // Prefer not moving into obvious free captures elsewhere: light mobility keep
+                score += Math.min(replies.length, 20) * 0.1;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = uci;
+                }
+            }
+            return best;
+        }
+
+        let multipvMoves = [];
+
+        function initEngine() {
+            try {
+                engine = new Worker('https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js');
+            } catch (e) {
+                engine = null;
+                return;
+            }
+
+            engine.onmessage = function (e) {
+                const line = e.data;
+                if (typeof line !== 'string') return;
+
+                if (line === 'uciok') {
+                    engine.postMessage('setoption name Skill Level value 20');
+                    engine.postMessage('setoption name MultiPV value 8');
+                    engine.postMessage('setoption name Contempt value 80');
+                    engine.postMessage('isready');
+                }
+                if (line === 'readyok') engineReady = true;
+
+                if (line.startsWith('info') && line.includes(' multipv ') && line.includes(' pv ')) {
+                    const mp = /multipv (\d+)/.exec(line);
+                    const pv = / pv ([a-h][1-8][a-h][1-8][qrbn]?)/.exec(line);
+                    if (mp && pv) {
+                        const rank = parseInt(mp[1], 10);
+                        if (rank <= 5) multipvMoves[rank - 1] = pv[1];
+                    }
+                }
+
+                if (line.startsWith('bestmove')) {
+                    if (paused) return;
+                    const parts = line.split(' ');
+                    let move = parts[1];
+                    if (!move || move === '(none)') {
+                        thinking = false;
+                        updateStatus();
+                        return;
+                    }
+                    const candidates = multipvMoves.filter(Boolean);
+                    if (candidates.length > 1) {
+                        move = pickGreedyAmong(candidates, game.fen());
+                    }
+                    multipvMoves = [];
+                    makeEngineMove(move);
+                    thinking = false;
+                    updateStatus();
+                }
+            };
+
+            engine.postMessage('uci');
+        }
+
+        function onPlayerPieceTaken() {
+            playerCaptures++;
+            console.log('[chess] pieces taken from player:', playerCaptures);
+            showGoodPuppy(true);
+
+            // Every 5 pieces taken → full gallery + moan + synced flash
+            if (playerCaptures > 0 && playerCaptures % 5 === 0) {
+                milestonesHit++;
+                // delay so GOOD PUPPY can show first
+                setTimeout(() => {
+                    if (!game.in_checkmate()) {
+                        runGalleryEvent(false);
+                    }
+                }, 1500);
+            }
+        }
+
+        function makeEngineMove(uci) {
+            if (paused) return;
+            const from = uci.slice(0, 2);
+            const to = uci.slice(2, 4);
+            const promotion = uci.length > 4 ? uci[4] : undefined;
+            const moveObj = { from, to };
+            if (promotion) moveObj.promotion = promotion;
+
+            const result = game.move(moveObj);
+            if (!result) return;
+
+            board.position(game.fen());
+
+            if (result.captured) {
+                onPlayerPieceTaken();
+            }
+
+            // Checkmate → gallery then YOU LOST
+            if (game.in_checkmate() && game.turn() === 'w') {
+                setTimeout(() => runGalleryEvent(true), result.captured ? 1600 : 400);
+            }
+
+            updateStatus();
+        }
+
+        function askEngine() {
+            if (game.game_over() || paused) return;
+
+            if (!engine || !engineReady) {
+                const moves = game.moves({ verbose: true });
+                if (!moves.length) return;
+                // Prefer highest-value captures; otherwise any move
+                const caps = moves.filter(m => m.captured)
+                    .sort((a, b) => (VAL[b.captured] || 0) - (VAL[a.captured] || 0));
+                const choice = caps[0] || moves[Math.floor(Math.random() * moves.length)];
+                const result = game.move(choice);
+                board.position(game.fen());
+                highlightCheck();
+                if (result && result.captured) onPlayerPieceTaken();
+                if (game.in_checkmate() && game.turn() === 'w') {
+                    setTimeout(() => runGalleryEvent(true), 1600);
+                }
+                updateStatus();
+                if (!game.game_over() && game.turn() === 'w' && !paused) {
+                    computeTrapHints();
+                    startPressureWatch();
+                }
+                return;
+            }
+
+            thinking = true;
+            multipvMoves = [];
+            updateStatus();
+            engine.postMessage('position fen ' + game.fen());
+            engine.postMessage('go depth 16');
+        }
+
+        // ===== Click-to-move (no drag) =====
+        let selectedSquare = null;
+        let trapSquares = new Set(); // destination squares that are AI traps
+
+        function clearTrapHints() {
+            $('#myBoard .square-55d63').removeClass('highlight-trap');
+            $('#myBoard .trap-label').remove();
+            trapSquares = new Set();
+        }
+
+        // Is a black capture on `to` safe (no bad recapture)?
+        function isSafeCaptureForBlack(gAfterWhiteMove, captureMove) {
+            const sim = new Chess(gAfterWhiteMove.fen());
+            const played = sim.move({
+                from: captureMove.from,
+                to: captureMove.to,
+                promotion: captureMove.promotion || 'q'
+            });
+            if (!played) return false;
+            const ourVal = VAL[played.piece] || 0;
+            const gained = VAL[played.captured] || 0;
+            // Can white recapture on that square?
+            const recaps = sim.moves({ verbose: true }).filter(r => r.to === captureMove.to && r.captured);
+            if (!recaps.length) return gained > 0; // free piece
+            // If white can recapture, only "safe" if we still win material
+            return gained > ourVal;
+        }
+
+        // One trap only: safest AI capture bait (max 10 per game)
+        function computeTrapHints() {
+            clearTrapHints();
+            if (game.game_over() || game.turn() !== 'w' || paused) return;
+            if (trapsUsedThisGame >= MAX_TRAPS) return;
+
+            const whiteMoves = game.moves({ verbose: true });
+            let best = null; // { to, safetyScore, material }
+
+            for (const wm of whiteMoves) {
+                const g = new Chess(game.fen());
+                const m = g.move({ from: wm.from, to: wm.to, promotion: wm.promotion || 'q' });
+                if (!m || g.game_over()) continue;
+
+                const blackCaps = g.moves({ verbose: true }).filter(x => x.captured);
+                for (const bc of blackCaps) {
+                    if (!isSafeCaptureForBlack(g, bc)) continue;
+                    const mat = VAL[bc.captured] || 0;
+                    // Higher material + free (no recapture) is safer/better
+                    const sim = new Chess(g.fen());
+                    sim.move({ from: bc.from, to: bc.to, promotion: bc.promotion || 'q' });
+                    const recaps = sim.moves({ verbose: true }).filter(r => r.to === bc.to && r.captured);
+                    const freeBonus = recaps.length ? 0 : 50;
+                    const safetyScore = mat * 100 + freeBonus;
+                    if (!best || safetyScore > best.safetyScore) {
+                        best = { to: wm.to, safetyScore, material: mat };
+                    }
+                }
+            }
+
+            if (!best) return;
+
+            trapSquares = new Set([best.to]);
+            trapsUsedThisGame++;
+            const el = $('#myBoard .square-' + best.to);
+            el.addClass('highlight-trap');
+            el.css('position', 'relative');
+            if (el.find('.trap-label').length === 0) {
+                el.append('<span class="trap-label">Move here</span>');
+            }
+        }
+
+        function clearMoveHighlights() {
+            $('#myBoard .square-55d63')
+                .removeClass('highlight-selected highlight-move highlight-capture');
+        }
+
+        function clearCheckHighlight() {
+            $('#myBoard .square-55d63').removeClass('highlight-check');
+        }
+
+        function findKingSquare(color) {
+            const b = game.board();
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const p = b[r][c];
+                    if (p && p.type === 'k' && p.color === color) {
+                        return 'abcdefgh'[c] + (8 - r);
+                    }
+                }
+            }
+            return null;
+        }
+
+        function highlightCheck() {
+            clearCheckHighlight();
+            if (game.in_check() || game.in_checkmate()) {
+                const kingSq = findKingSquare(game.turn());
+                if (kingSq) {
+                    $('#myBoard .square-' + kingSq).addClass('highlight-check');
+                }
+            }
+        }
+
+        function getLegalTargets(from) {
+            return game.moves({ square: from, verbose: true });
+        }
+
+        function selectSquare(square) {
+            clearMoveHighlights();
+            selectedSquare = square;
+            if (!square) return;
+
+            $('#myBoard .square-' + square).addClass('highlight-selected');
+
+            const moves = getLegalTargets(square);
+            moves.forEach(m => {
+                const el = $('#myBoard .square-' + m.to);
+                if (m.captured) el.addClass('highlight-capture');
+                else el.addClass('highlight-move');
+            });
+        }
+
+        function tryPlayerMove(from, to) {
+            const fellForTrap = trapSquares.has(to);
+
+            const move = game.move({ from, to, promotion: 'q' });
+            if (move === null) return false;
+
+            selectedSquare = null;
+            clearMoveHighlights();
+            clearTrapHints();
+            stopPressure();
+            board.position(game.fen());
+            highlightCheck();
+            updateStatus();
+
+            // Player followed AI bait → clicker + GOOD PUPPY only (no pic)
+            if (fellForTrap) {
+                showTrapReward();
+            }
+
+            window.setTimeout(askEngine, 250);
+            return true;
+        }
+
+        function onSquareClick(square) {
+            if (introActive || !gameStarted || game.game_over() || thinking || paused) return;
+            if (game.turn() !== 'w') return;
+
+            const piece = game.get(square);
+
+            // No selection yet → select own piece
+            if (!selectedSquare) {
+                if (piece && piece.color === 'w') {
+                    selectSquare(square);
+                }
+                return;
+            }
+
+            // Clicked same square → deselect
+            if (selectedSquare === square) {
+                selectSquare(null);
+                return;
+            }
+
+            // Clicked another own piece → reselect
+            if (piece && piece.color === 'w') {
+                selectSquare(square);
+                return;
+            }
+
+            // Try move to this square
+            const ok = tryPlayerMove(selectedSquare, square);
+            if (!ok) {
+                // illegal → keep selection or clear
+                selectSquare(null);
+            }
+        }
+
+        function stopPressure() {
+            pressureGen++;
+            if (pressureTimer) { clearTimeout(pressureTimer); pressureTimer = null; }
+            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+            if (typingTimer) { clearTimeout(typingTimer); typingTimer = null; }
+            stopKeyboardSound();
+            countdownActive = false;
+            pressureStep = 0;
+            const overlay = document.getElementById('countdown-overlay');
+            const msg = document.getElementById('pressure-msg');
+            const num = document.getElementById('cd-num');
+            if (overlay) overlay.classList.remove('show');
+            if (msg) msg.innerHTML = '';
+            if (num) num.style.display = 'none';
+        }
+
+        function isPlayerIdleTurn() {
+            return gameStarted && !introActive && !game.game_over() && !paused && !thinking && game.turn() === 'w' && !countdownActive;
+        }
+
+        let keyboardAudio = null;
+
+        function stopKeyboardSound() {
+            if (keyboardAudio) {
+                try {
+                    keyboardAudio.pause();
+                    keyboardAudio.currentTime = 0;
+                } catch (e) {}
+                keyboardAudio = null;
+            }
+        }
+
+        // Play keyboard.mp3 once; typing duration matches audio length
+        function typePressureMessage(text, gen) {
+            return new Promise((resolve) => {
+                if (gen !== pressureGen) { resolve(); return; }
+                const overlay = document.getElementById('countdown-overlay');
+                const msg = document.getElementById('pressure-msg');
+                const num = document.getElementById('cd-num');
+                if (num) num.style.display = 'none';
+                overlay.classList.add('show');
+                msg.innerHTML = '<span class="cursor"></span>';
+
+                stopKeyboardSound();
+                const chars = text.length || 1;
+                // Default 8s (matches your keyboard.mp3); use real duration if available
+                let totalMs = 3150; // keyboard.mp3 length
+
+                function startTyping(durationMs) {
+                    if (gen !== pressureGen) { resolve(); return; }
+                    const step = Math.max(30, durationMs / chars);
+                    let i = 0;
+                    function tick() {
+                        if (gen !== pressureGen) {
+                            stopKeyboardSound();
+                            resolve();
+                            return;
+                        }
+                        if (i >= text.length) {
+                            stopKeyboardSound();
+                            typingTimer = setTimeout(() => resolve(), 150);
+                            return;
+                        }
+                        msg.innerHTML = text.slice(0, i + 1) + '<span class="cursor"></span>';
+                        i++;
+                        typingTimer = setTimeout(tick, step);
+                    }
+                    tick();
+                }
+
+                try {
+                    keyboardAudio = new Audio('keyboard.mp3');
+                    keyboardAudio.volume = 0.7;
+                    const a = keyboardAudio;
+                    const begin = () => {
+                        const d = a.duration;
+                        // Prefer real duration; fall back to 3.15s
+                        if (d && isFinite(d) && d > 0.2) {
+                            totalMs = d * 1000;
+                        } else {
+                            totalMs = 3150;
+                        }
+                        a.currentTime = 0;
+                        a.play().catch((e) => console.warn('[chess] keyboard play failed', e));
+                        startTyping(totalMs);
+                    };
+                    if (a.readyState >= 1) begin();
+                    else {
+                        a.addEventListener('loadedmetadata', begin, { once: true });
+                        a.addEventListener('error', () => startTyping(totalMs), { once: true });
+                        // fallback if metadata never fires
+                        setTimeout(() => {
+                            if (gen === pressureGen && msg.textContent.length <= 1) startTyping(totalMs);
+                        }, 400);
+                    }
+                } catch (e) {
+                    startTyping(totalMs);
+                }
+            });
+        }
+
+        // Start / restart inactivity clock only on player's turn
+        function startPressureWatch() {
+            stopPressure();
+            if (!isPlayerIdleTurn()) return;
+
+            const gen = pressureGen;
+            // First message after 15s of real inactivity
+            pressureTimer = setTimeout(() => {
+                if (gen !== pressureGen || !isPlayerIdleTurn()) return;
+                runPressureSequence(gen);
+            }, FIRST_PRESSURE_MS);
+        }
+
+        async function runPressureSequence(gen) {
+            if (gen !== pressureGen || !isPlayerIdleTurn()) return;
+
+            while (pressureStep < PRESSURE_LINES.length) {
+                if (gen !== pressureGen || !isPlayerIdleTurn()) return;
+
+                const line = PRESSURE_LINES[pressureStep];
+                pressureStep++;
+                await typePressureMessage(line, gen);
+
+                if (gen !== pressureGen || !isPlayerIdleTurn()) return;
+
+                // 10s AFTER typing finished
+                await new Promise(r => {
+                    pressureTimer = setTimeout(r, BETWEEN_PRESSURE_MS);
+                });
+            }
+
+            if (gen !== pressureGen || !isPlayerIdleTurn()) return;
+            startForceCountdown(gen);
+        }
+
+        function startForceCountdown(gen) {
+            if (countdownActive) return;
+            if (gen !== undefined && gen !== pressureGen) return;
+            countdownActive = true;
+            let left = 10;
+            const overlay = document.getElementById('countdown-overlay');
+            const msg = document.getElementById('pressure-msg');
+            const num = document.getElementById('cd-num');
+            overlay.classList.add('show');
+            if (msg) msg.innerHTML = '';
+            num.style.display = 'block';
+            num.textContent = String(left);
+
+            countdownTimer = setInterval(() => {
+                if (gen !== undefined && gen !== pressureGen) {
+                    clearInterval(countdownTimer);
+                    countdownTimer = null;
+                    return;
+                }
+                left--;
+                num.textContent = String(left);
+                if (left <= 0) {
+                    clearInterval(countdownTimer);
+                    countdownTimer = null;
+                    overlay.classList.remove('show');
+                    num.style.display = 'none';
+                    forceBadPlayerMove();
+                }
+            }, 1000);
+        }
+
+        // Random move that benefits the AI, then 10s pic flash + looping clickers
+        function forceBadPlayerMove() {
+            if (game.game_over() || game.turn() !== 'w') {
+                stopPressure();
+                return;
+            }
+
+            const moves = game.moves({ verbose: true });
+            if (!moves.length) { stopPressure(); return; }
+
+            // Prefer moves that allow AI a safe capture afterward
+            let candidates = [];
+            for (const wm of moves) {
+                const g = new Chess(game.fen());
+                g.move({ from: wm.from, to: wm.to, promotion: wm.promotion || 'q' });
+                const caps = g.moves({ verbose: true }).filter(x => x.captured && isSafeCaptureForBlack(g, x));
+                if (caps.length) candidates.push(wm);
+            }
+            if (!candidates.length) candidates = moves;
+            // Prefer hanging higher value if possible
+            candidates.sort((a, b) => {
+                const ga = new Chess(game.fen()); ga.move(a);
+                const gb = new Chess(game.fen()); gb.move(b);
+                const ca = ga.moves({ verbose: true }).filter(x => x.captured).reduce((s, x) => s + (VAL[x.captured] || 0), 0);
+                const cb = gb.moves({ verbose: true }).filter(x => x.captured).reduce((s, x) => s + (VAL[x.captured] || 0), 0);
+                return cb - ca;
+            });
+
+            const choice = candidates[0];
+            clearTrapHints();
+            clearMoveHighlights();
+            selectedSquare = null;
+            game.move({ from: choice.from, to: choice.to, promotion: choice.promotion || 'q' });
+            board.position(game.fen());
+            highlightCheck();
+            updateStatus();
+            stopPressure();
+
+            // 10s picture flash + looping clickers
+            runTimeoutPunishment().then(() => {
+                if (!game.game_over()) {
+                    window.setTimeout(askEngine, 200);
+                }
+            });
+        }
+
+        function runTimeoutPunishment() {
+            return new Promise((resolve) => {
+                paused = true;
+                runSyncedFlash({
+                    durationMs: 10000,
+                    onDone: () => {
+                        paused = false;
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        async function runIntroSequence() {
+            introActive = true;
+            gameStarted = false;
+            paused = true;
+            stopPressure();
+            clearTrapHints();
+            clearMoveHighlights();
+            clearCheckHighlight();
+            // Empty board during intro
+            if (board) board.position('empty', false);
+            updateStatus();
+
+            const gen = pressureGen; // stopPressure already bumped gen; lock this intro
+            // Use a dedicated gen so stopPressure during intro from New Game cancels old intro
+            const myGen = pressureGen;
+
+            for (let i = 0; i < INTRO_LINES.length; i++) {
+                if (pressureGen !== myGen && i > 0) {
+                    // New Game clicked mid-intro: abort this run
+                    return;
+                }
+                // Allow restart: if pressureGen changed at start of loop after first line, abort
+                await typePressureMessage(INTRO_LINES[i], myGen);
+                // short pause after each line (except we still wait after last a bit)
+                await new Promise(r => {
+                    pressureTimer = setTimeout(r, 900);
+                });
+            }
+
+            // Hide overlay
+            const overlay = document.getElementById('countdown-overlay');
+            const msg = document.getElementById('pressure-msg');
+            if (msg) msg.innerHTML = '';
+            if (overlay) overlay.classList.remove('show');
+            stopKeyboardSound();
+
+            // Pieces pop onto board
+            game.reset();
+            board.position('start');
+            introActive = false;
+            gameStarted = true;
+            paused = false;
+            thinking = false;
+            updateStatus();
+            highlightCheck();
+            computeTrapHints();
+            startPressureWatch();
+        }
+
+        function startNewGame() {
+            // Cancel any running intro/pressure
+            stopPressure();
+            game.reset();
+            selectedSquare = null;
+            clearMoveHighlights();
+            clearCheckHighlight();
+            clearTrapHints();
+            board.position('empty', false);
+            thinking = false;
+            paused = true;
+            introActive = true;
+            gameStarted = false;
+            playerCaptures = 0;
+            milestonesHit = 0;
+            trapsUsedThisGame = 0;
+            hideYouLost();
+            document.getElementById('gallery-overlay').classList.remove('active');
+            document.getElementById('puppy-overlay').classList.remove('show');
+            updateStatus();
+            // Replay welcome sequence
+            runIntroSequence();
+        }
+
+        board = Chessboard('myBoard', {
+            draggable: false,
+            position: 'empty',
+            pieceTheme: function (piece) {
+                return 'https://chessboardjs.com/img/chesspieces/wikipedia/' + piece + '.png';
+            }
+        });
+
+        // Click handler on squares
+        $('#myBoard').on('click', '.square-55d63', function () {
+            // square class is e.g. "square-55d63 square-e4"
+            const classes = (this.className || '').split(/\s+/);
+            let sq = null;
+            for (const c of classes) {
+                if (/^square-[a-h][1-8]$/.test(c)) {
+                    sq = c.replace('square-', '');
+                    break;
+                }
+            }
+            if (sq) onSquareClick(sq);
+        });
+
+        // After engine moves, re-apply check highlight + new trap hints
+        const _makeEngineMove = makeEngineMove;
+        makeEngineMove = function (uci) {
+            selectedSquare = null;
+            clearMoveHighlights();
+            clearTrapHints();
+            _makeEngineMove(uci);
+            board.position(game.fen());
+            highlightCheck();
+            if (!game.game_over() && game.turn() === 'w' && !paused) {
+                computeTrapHints();
+                startPressureWatch();
+            }
+        };
+
+        initEngine();
+        updateStatus();
+        // Wait for first click so audio (keyboard + later moan) is allowed by the browser
+        const bootMsg = document.getElementById('pressure-msg');
+        const bootOverlay = document.getElementById('countdown-overlay');
+        if (bootOverlay && bootMsg) {
+            bootOverlay.classList.add('show');
+            bootMsg.innerHTML = 'Click anywhere to begin~';
+        }
+        function beginSite() {
+            document.removeEventListener('click', beginSite);
+            document.removeEventListener('keydown', beginSite);
+            unlockAudio();
+            if (bootMsg) bootMsg.innerHTML = '';
+            runIntroSequence();
+        }
+        document.addEventListener('click', beginSite);
+        document.addEventListener('keydown', beginSite);
+
+        document.getElementById('btn-new').addEventListener('click', startNewGame);
+        document.getElementById('btn-undo').addEventListener('click', () => {
+            if (thinking || paused) return;
+            game.undo();
+            game.undo();
+            selectedSquare = null;
+            clearMoveHighlights();
+            board.position(game.fen());
+            highlightCheck();
+            updateStatus();
+        });
+
+        window.addEventListener('resize', () => board.resize());
+    </script>
+</body>
+</html>
